@@ -46,6 +46,7 @@ from backend.query.graph import (
     policies_context_to_dict,
 )
 from backend.export.formatter import export_md, export_html, export_json
+from backend.normalize.domain import ALL_DOMAINS
 
 router = APIRouter()
 
@@ -487,8 +488,7 @@ async def query_session(session_id: str, req: QueryRequest):
 
     conn = get_conn(db_path)
     try:
-        results = await asyncio.to_thread(
-            query_by_element,
+        results = query_by_element(
             conn,
             session_id,
             req.element,
