@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Show Tech Reader</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<aside id="sidebar">
+  <div id="sidebar-header">
+    <h1>Show Tech Reader</h1>
+    <p>Element-focused Cisco troubleshooting</p>
+  </div>
+
+  <!-- Index file by path -->
+  <div class="sidebar-section">
+    <label>Index File</label>
+    <input type="file" id="file-picker-read" style="display:none" accept=".txt,.log,.out,.tgz,.gz,.tar.gz" multiple>
+    <input type="file" id="file-picker-upload" style="display:none" accept=".txt,.log,.out,.tgz,.gz,.tar.gz" multiple>
+    <div style="display:flex;gap:4px;margin-bottom:5px;">
+      <button id="browse-read-btn" title="Browse and read directly from disk (local — fast)" style="flex:1;padding:7px 4px;background:#1C2E3E;color:#90CAF9;border:1px solid #37474F;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;">&#x1F4C2; Browse &amp; Read</button>
+      <button id="browse-upload-btn" title="Browse and upload file (remote server)" style="flex:1;padding:7px 4px;background:#1E2D1E;color:#A5D6A7;border:1px solid #37474F;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;">&#x2601; Browse &amp; Upload</button>
+    </div>
+    <div id="selected-file" style="font-size:11px;color:#78909C;word-break:break-all;min-height:10px;margin-bottom:4px;"></div>
+    <div id="progress-container">
+      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+      <div id="progress-text">Indexing…</div>
+    </div>
+  </div>
+
+  <!-- Session selector -->
+  <div class="sidebar-section">
+    <label>Session</label>
+    <select id="session-list">
+      <option value="">— upload a file —</option>
+    </select>
+    <div style="display:flex;gap:5px;margin-top:5px;">
+      <button id="pop-session-btn" title="Delete the most recent session (lazy cleanup)" style="flex:1;padding:5px 6px;font-size:10px;background:#37474F;color:#B0BEC5;border:1px solid #546E7A;border-radius:4px;cursor:pointer;font-family:inherit;">&#x23EA; Pop last</button>
+      <button id="del-session-btn" title="Delete the currently selected session" style="flex:1;padding:5px 6px;font-size:10px;background:#4E1111;color:#EF9A9A;border:1px solid #7B2020;border-radius:4px;cursor:pointer;font-family:inherit;">&#x1F5D1; Delete</button>
+    </div>
+  </div>
+
+  <!-- Element search -->
+  <div class="sidebar-section">
+    <label>Filter #1 — Element</label>
+    <div id="element-wrap">
+      <input type="text" id="element-input" placeholder="e.g. Eth1/15, Gi0/1, Vlan10…" autocomplete="off">
+      <div id="autocomplete-list"></div>
+    </div>
+  </div>
+
+  <!-- Domain tabs -->
+  <div class="sidebar-section">
+    <label>Filter #2 — Domain</label>
+    <div class="domain-tabs">
+      <div class="domain-tab active" data-domain="">All</div>
+      <div class="domain-tab" data-domain="INTERFACES">Interfaces</div>
+      <div class="domain-tab" data-domain="LOGS">Logs</div>
+      <div class="domain-tab" data-domain="HARDWARE">Hardware</div>
+      <div class="domain-tab" data-domain="ROUTING">Routing</div>
+      <div class="domain-tab" data-domain="CONFIG">Config</div>
+      <div class="domain-tab" data-domain="PROCESS">Process</div>
+    </div>
+  </div>
+
+  <!-- Toggles -->
+  <div class="sidebar-section">
+    <label>Filter #3 — Options</label>
+    <label class="toggle-row">
+      <input type="checkbox" id="toggle-smart"> Smart Reduce
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" id="toggle-dupes" checked> Show Duplicates
+    </label>
+  </div>
+
+  <!-- Search -->
+  <div class="sidebar-section">
+    <button id="search-btn" disabled>Search</button>
+  </div>
+</aside>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main id="main">
+  <div id="main-header">
+    <div id="current-element">No element selected</div>
+    <div id="result-count"></div>
+    <div id="export-wrap" style="display:none;">
+      <button class="export-btn" data-fmt="html">Export HTML</button>
+      <button class="export-btn" data-fmt="md">Export MD</button>
+      <button class="export-btn" data-fmt="json">Export JSON</button>
+    </div>
+  </div>
+
+  <!-- Relationship / ownership banner -->
+  <div id="rel-banner" style="display:none;">
+    <div id="rel-ownership"></div>
+    <div id="rel-chain"></div>
+    <div id="rel-peer"></div>
+  </div>
+
+  <!-- Summary cards (smart reduce) -->
+  <div id="cards-container" style="display:none;"></div>
+
+  <!-- Alerts strip -->
+  <div id="alerts-container"></div>
+
+  <!-- Traffic Context panel -->
+  <div id="traffic-context" style="display:none;">
+    <div class="panel-header">&#x1F5FA; Traffic Context</div>
+    <div id="traffic-chain"></div>
+    <div id="traffic-vrf"></div>
+    <div id="traffic-neighbors"></div>
+  </div>
+
+  <!-- Policies panel -->
+  <div id="policies-panel" style="display:none;">
+    <div class="panel-header">&#x1F512; Policies Affecting This Element</div>
+    <div id="policies-content"></div>
+  </div>
+
+  <!-- Daemon hints strip -->
+  <div id="daemon-container" style="display:none;">
+    <div id="daemon-header">
+      <span>&#x26A1; Likely involved processes</span>
+      <span id="daemon-subtitle"></span>
+    </div>
+    <div id="daemon-chips"></div>
+  </div>
+
+  <!-- Daemon detail panel (appears on chip click) -->
+  <div id="daemon-detail" style="display:none;"></div>
+
+  <!-- Timeline (smart reduce) -->
+  <div id="timeline-container">
+    <h3>&#x23F1; Event Timeline</h3>
+    <div id="timeline-events"></div>
+  </div>
+
+  <!-- Evidence -->
+  <div id="evidence-container">
+    <div id="empty-state">
+      <div class="icon">&#x1F50D;</div>
+      <div>Select a session and type an element name to begin</div>
+    </div>
+  </div>
+
+  <button id="load-more-btn">Load more…</button>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

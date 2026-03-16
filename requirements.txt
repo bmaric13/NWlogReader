@@ -1,0 +1,6 @@
+fastapi>=0.111
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+aiofiles>=23.2
+sse-starlette>=2.1
+duckdb>=0.10
