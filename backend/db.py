@@ -12,11 +12,8 @@ def _exec(conn, sql: str) -> None:
 
 
 def get_conn(db_path: str | Path) -> duckdb.DuckDBPyConnection:
-    """Open DB for query use: create tables + indexes (idempotent)."""
-    conn = duckdb.connect(str(db_path))
-    _create_tables(conn)
-    create_indexes(conn)
-    return conn
+    """Open DB for query use (read-only — allows concurrent connections)."""
+    return duckdb.connect(str(db_path), read_only=True)
 
 
 def open_for_ingest(db_path: str | Path) -> duckdb.DuckDBPyConnection:
