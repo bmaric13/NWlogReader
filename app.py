@@ -1,4 +1,5 @@
 """Show Tech Reader — entry point."""
+
 import os
 import threading
 import webbrowser
@@ -29,8 +30,11 @@ async def index():
     return FileResponse("static/index.html")
 
 
+PORT = int(os.environ.get("PORT", 8999))
+
+
 def _open_browser():
-    webbrowser.open("http://localhost:8999")
+    webbrowser.open(f"http://localhost:{PORT}")
 
 
 if __name__ == "__main__":
@@ -39,7 +43,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
-        port=8999,
+        port=PORT,
         reload=False,
         log_level="info",
     )

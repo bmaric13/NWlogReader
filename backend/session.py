@@ -1,4 +1,5 @@
 """Session lifecycle: create, list, resolve paths."""
+
 import json
 import random
 import string
@@ -23,8 +24,8 @@ def _write_sidecar(session_dir: Path, meta: dict) -> None:
     """Write/update the JSON sidecar — always readable even while DB is locked."""
     try:
         (session_dir / _META_NAME).write_text(json.dumps(meta), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[WARN] sidecar write failed: {e}", file=sys.stderr)
 
 
 def create_session(original_filename: str = "") -> dict:
@@ -65,6 +66,7 @@ def list_sessions() -> list[dict]:
         return []
     sessions = []
     import re as _re
+
     _SESSION_RE = _re.compile(r"^\d{8}_\d{6}_[a-z0-9]+$")
     for d in sorted(WORK_DIR.iterdir(), reverse=True):
         if not d.is_dir():
@@ -111,6 +113,7 @@ def get_session_db_path(session_id: str) -> Path:
 def delete_session(session_id: str) -> bool:
     """Delete session directory and all its data. Returns True if deleted."""
     import shutil
+
     session_dir = WORK_DIR / session_id
     if not session_dir.exists():
         return False
@@ -123,6 +126,10 @@ def update_session_status(session_id: str, status: str, conn=None) -> None:
     sql = "INSERT INTO session_meta VALUES ('status', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value"
     if conn is not None:
         conn.execute(sql, [status])
+        try:
+            conn.commit()
+        except Exception:
+            pass  # may already be in autocommit mode
     else:
         db_path = get_session_db_path(session_id)
         c = duckdb.connect(str(db_path))
@@ -136,5 +143,7 @@ def update_session_status(session_id: str, status: str, conn=None) -> None:
             meta = json.loads(json_path.read_text(encoding="utf-8"))
             meta["status"] = status
             _write_sidecar(session_dir, meta)
-        except Exception:
-            pass
+        except Exception as e:
+            print(
+                f"[WARN] sidecar update failed for {session_id}: {e}", file=sys.stderr
+            )

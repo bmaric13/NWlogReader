@@ -1,4 +1,5 @@
 """All FastAPI route definitions."""
+
 import asyncio
 import json
 import os
@@ -6,12 +7,25 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File, Query
-from fastapi.responses import Response, StreamingResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    Request,
+    UploadFile,
+    File,
+    Query,
+)
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from backend.session import create_session, list_sessions, get_session_db_path, delete_session
+from backend.session import (
+    create_session,
+    list_sessions,
+    get_session_db_path,
+    delete_session,
+)
 from backend.db import get_conn
 from backend.ingest.pipeline import ingest
 from backend.query.filter1 import query_by_element
@@ -20,10 +34,16 @@ from backend.query.smart_reduce import smart_reduce
 from backend.query.health import detect_health
 from backend.query.daemons import infer_daemons
 from backend.query.process_glossary import glossary_as_dict
-from backend.query.relationships import get_relationships, find_peer_session, serialize as rel_serialize
+from backend.query.relationships import (
+    get_relationships,
+    find_peer_session,
+    serialize as rel_serialize,
+)
 from backend.query.graph import (
-    get_traffic_context, get_policies_for_element,
-    traffic_context_to_dict, policies_context_to_dict,
+    get_traffic_context,
+    get_policies_for_element,
+    traffic_context_to_dict,
+    policies_context_to_dict,
 )
 from backend.export.formatter import export_md, export_html, export_json
 
@@ -38,7 +58,9 @@ def _open_file_dialog() -> str:
     pythonw has its own message loop and can show tkinter dialogs from any thread.
     Result written to a temp file to avoid stdout capture issues.
     """
-    import subprocess, sys, tempfile, os
+    import subprocess
+    import sys
+
     tmp = tempfile.mktemp(suffix=".txt")
     script = (
         "import tkinter as tk; from tkinter import filedialog; "
@@ -72,14 +94,17 @@ def _open_file_dialog() -> str:
 async def browse_file():
     """Open native file picker; returns {path} or empty string."""
     import asyncio
+
     path = await asyncio.get_event_loop().run_in_executor(None, _open_file_dialog)
     return {"path": path}
+
 
 # In-memory progress store: session_id → list of event dicts
 _progress: dict[str, list[dict]] = {}
 
 
 # ── Ingest ────────────────────────────────────────────────────────────────────
+
 
 @router.post("/api/sessions/ingest-stream")
 async def ingest_stream(
@@ -113,9 +138,16 @@ async def ingest_stream(
     since = len(_progress.get(session_id, []))
     _progress.setdefault(session_id, [])
 
-    def _cb(evt): _progress[session_id].append(evt)
+    def _cb(evt):
+        _progress[session_id].append(evt)
+
     background_tasks.add_task(ingest, session_id, str(dest), _cb)
-    return {"session_id": session_id, "filename": filename, "since": since, "new_session": new_session}
+    return {
+        "session_id": session_id,
+        "filename": filename,
+        "since": since,
+        "new_session": new_session,
+    }
 
 
 @router.post("/api/sessions/ingest")
@@ -162,7 +194,12 @@ async def ingest_file(
 
     since = len(_progress[session_id])  # client should poll from this index
     background_tasks.add_task(_run_ingest, session_id, dest, _cb)
-    return {"session_id": session_id, "filename": file.filename, "new_session": new_session, "since": since}
+    return {
+        "session_id": session_id,
+        "filename": file.filename,
+        "new_session": new_session,
+        "since": since,
+    }
 
 
 def _run_ingest(session_id: str, path: Path, progress_cb) -> None:
@@ -170,6 +207,7 @@ def _run_ingest(session_id: str, path: Path, progress_cb) -> None:
 
 
 # ── Path-based ingest (file already on disk — no upload copy) ─────────────────
+
 
 class IngestPathRequest(BaseModel):
     path: str
@@ -186,6 +224,7 @@ async def ingest_path(background_tasks: BackgroundTasks, req: IngestPathRequest)
     file_path = Path(req.path)
     if not file_path.is_absolute():
         file_path = Path.cwd() / file_path
+    file_path = file_path.resolve()
 
     if not file_path.exists():
         raise HTTPException(400, f"File not found: {file_path}")
@@ -227,6 +266,7 @@ async def ingest_path(background_tasks: BackgroundTasks, req: IngestPathRequest)
 
 # ── Progress SSE ──────────────────────────────────────────────────────────────
 
+
 @router.get("/api/sessions/{session_id}/progress")
 async def progress_stream(session_id: str, since: int = 0):
     """
@@ -234,6 +274,7 @@ async def progress_stream(session_id: str, since: int = 0):
     `since` lets clients start from a specific event index (for multi-part uploads).
     The response includes an `event_index` field so the client knows where to resume.
     """
+
     async def _generator():
         last_idx = since
         idle_count = 0
@@ -254,6 +295,7 @@ async def progress_stream(session_id: str, since: int = 0):
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
+
 
 @router.get("/api/sessions")
 async def get_sessions():
@@ -285,6 +327,7 @@ async def delete_latest_session():
 
 # ── Process glossary ──────────────────────────────────────────────────────────
 
+
 @router.get("/api/glossary")
 async def get_glossary():
     """Return full process/daemon glossary for the frontend."""
@@ -292,6 +335,7 @@ async def get_glossary():
 
 
 # ── Relationships ─────────────────────────────────────────────────────────────
+
 
 @router.get("/api/sessions/{session_id}/relationships")
 async def get_element_relationships(session_id: str, element: str = Query(...)):
@@ -302,6 +346,7 @@ async def get_element_relationships(session_id: str, element: str = Query(...)):
     conn = get_conn(db_path)
     try:
         from backend.normalize.entities import parse_user_element
+
         canonical = parse_user_element(element)["canonical"]
         ctx = get_relationships(conn, session_id, canonical)
 
@@ -340,6 +385,7 @@ async def get_graph(session_id: str, element: str = Query(...)):
     conn = get_conn(db_path)
     try:
         from backend.normalize.entities import parse_user_element
+
         canonical = parse_user_element(element)["canonical"]
         traffic = get_traffic_context(conn, session_id, canonical)
         policies = get_policies_for_element(conn, session_id, canonical)
@@ -359,9 +405,7 @@ async def get_device_info(session_id: str):
         raise HTTPException(404, "Session not found")
     conn = get_conn(db_path)
     try:
-        cur = conn.execute(
-            "SELECT * FROM device_info WHERE session_id=?", [session_id]
-        )
+        cur = conn.execute("SELECT * FROM device_info WHERE session_id=?", [session_id])
         row = cur.fetchone()
         if not row:
             return {}
@@ -372,6 +416,7 @@ async def get_device_info(session_id: str):
 
 
 # ── Entities (autocomplete) ───────────────────────────────────────────────────
+
 
 @router.get("/api/sessions/{session_id}/entities")
 async def get_entities(
@@ -390,7 +435,9 @@ async def get_entities(
         clauses = ["e.session_id = ?"]
 
         if q:
-            clauses.append("(lower(e.canonical) ILIKE lower(?) OR lower(e.raw) ILIKE lower(?))")
+            clauses.append(
+                "(lower(e.canonical) ILIKE lower(?) OR lower(e.raw) ILIKE lower(?))"
+            )
             params += [f"%{q}%", f"%{q}%"]
         if type:
             clauses.append("e.entity_type = ?")
@@ -419,6 +466,7 @@ async def get_entities(
 
 # ── Query ─────────────────────────────────────────────────────────────────────
 
+
 class QueryRequest(BaseModel):
     element: str
     domain: str | None = None
@@ -434,10 +482,16 @@ async def query_session(session_id: str, req: QueryRequest):
     if not db_path.exists():
         raise HTTPException(404, "Session not found")
 
+    if req.domain and req.domain not in ALL_DOMAINS:
+        raise HTTPException(400, f"Unknown domain: {req.domain!r}")
+
     conn = get_conn(db_path)
     try:
-        results = query_by_element(
-            conn, session_id, req.element,
+        results = await asyncio.to_thread(
+            query_by_element,
+            conn,
+            session_id,
+            req.element,
             domain=req.domain,
             page=req.page,
             limit=req.limit,
@@ -521,6 +575,7 @@ def _serialize_results(results):
 
 # ── Raw chunk ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/api/sessions/{session_id}/chunk/{chunk_id}")
 async def get_chunk(session_id: str, chunk_id: int):
     db_path = get_session_db_path(session_id)
@@ -540,12 +595,23 @@ async def get_chunk(session_id: str, chunk_id: int):
         ).fetchone()
         if not row:
             raise HTTPException(404, "Chunk not found")
-        chunk_id_, domain, source_name, source_path, title, start_line, line_count, body, truncated = row
+        (
+            chunk_id_,
+            domain,
+            source_name,
+            source_path,
+            title,
+            start_line,
+            line_count,
+            body,
+            truncated,
+        ) = row
 
         # If body was truncated during ingest, try to read full text from source file
         if truncated and source_path:
             try:
                 from pathlib import Path as _P
+
                 src = _P(source_path)
                 if src.exists():
                     raw = src.read_bytes()
@@ -557,8 +623,12 @@ async def get_chunk(session_id: str, chunk_id: int):
                 pass  # fall back to stored preview
 
         return {
-            "chunk_id": chunk_id_, "domain": domain, "source_name": source_name,
-            "title": title, "start_line": start_line, "line_count": line_count,
+            "chunk_id": chunk_id_,
+            "domain": domain,
+            "source_name": source_name,
+            "title": title,
+            "start_line": start_line,
+            "line_count": line_count,
             "body": body,
         }
     finally:
@@ -566,6 +636,7 @@ async def get_chunk(session_id: str, chunk_id: int):
 
 
 # ── Export ────────────────────────────────────────────────────────────────────
+
 
 class ExportRequest(BaseModel):
     element: str
@@ -579,9 +650,14 @@ async def export_session(session_id: str, req: ExportRequest):
     if not db_path.exists():
         raise HTTPException(404, "Session not found")
 
+    if req.domain and req.domain not in ALL_DOMAINS:
+        raise HTTPException(400, f"Unknown domain: {req.domain!r}")
+
     conn = get_conn(db_path)
     try:
-        results = query_by_element(conn, session_id, req.element, domain=req.domain, limit=200)
+        results = query_by_element(
+            conn, session_id, req.element, domain=req.domain, limit=200
+        )
         if req.domain:
             results = apply_domain_filter(results, req.domain)
         for r in results:

@@ -161,7 +161,7 @@ function waitForIngestion(sessionId, since, label) {
       }
       if (data.status === 'error') { es.close(); reject(new Error(data.error || 'ingest error')); }
     };
-    es.onerror = () => { es.close(); resolve(); };
+    es.onerror = () => { es.close(); reject(new Error('SSE connection lost')); };
   });
 }
 
@@ -201,6 +201,7 @@ function refreshSessionList(selectId) {
 
 sessionList.addEventListener('change', () => {
   state.sessionId = sessionList.value || null;
+  state.page = 0;
   updateSearchBtn();
   clearResults();
 });

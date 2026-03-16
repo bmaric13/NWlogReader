@@ -1,4 +1,5 @@
 """Index chunks into DuckDB: domain detect, entity extract, bulk insert."""
+
 import hashlib
 from backend.ingest.chunker import Chunk
 from backend.normalize.domain import detect_domain
@@ -9,7 +10,7 @@ COMMIT_EVERY = 2000
 
 
 def _body_hash(chunk: Chunk) -> str:
-    sig = chunk.title + "".join(chunk.lines[:5])
+    sig = chunk.title + "".join(chunk.lines[:20])
     return hashlib.md5(sig.encode("utf-8", errors="replace")).hexdigest()
 
 
@@ -48,7 +49,7 @@ _PREVIEW_LINES = 500
 def index_prepared_chunks(
     conn,
     session_id: str,
-    prepared: list,          # [(Chunk, domain, entities), ...]
+    prepared: list,  # [(Chunk, domain, entities), ...]
     seen_hashes: set | None = None,
     source_path: str | None = None,  # absolute path to source file (flat ingest)
 ) -> int:
@@ -69,7 +70,7 @@ def index_prepared_chunks(
         seen_hashes = set()
 
     # ── 1. Dedup ──────────────────────────────────────────────────────────────
-    to_insert: list[tuple] = []   # (chunk, domain, entities, bh)
+    to_insert: list[tuple] = []  # (chunk, domain, entities, bh)
     for chunk, domain, entities in prepared:
         bh = _body_hash(chunk)
         if bh in seen_hashes:
@@ -86,14 +87,25 @@ def index_prepared_chunks(
 
         # ── 2. Pre-allocate chunk IDs (single query) ──────────────────────────
         chunk_ids = [
-            r[0] for r in
-            conn.execute(f"SELECT nextval('seq_chunk_id') FROM range({n})").fetchall()
+            r[0]
+            for r in conn.execute(
+                f"SELECT nextval('seq_chunk_id') FROM range({n})"
+            ).fetchall()
         ]
 
         # ── 3. Bulk insert chunks ─────────────────────────────────────────────
         chunk_rows = [
-            (cid, session_id, ch.source_name, source_path, dom, ch.title,
-             ch.start_line, len(ch.lines), bh)
+            (
+                cid,
+                session_id,
+                ch.source_name,
+                source_path,
+                dom,
+                ch.title,
+                ch.start_line,
+                len(ch.lines),
+                bh,
+            )
             for cid, (ch, dom, _ents, bh) in zip(chunk_ids, to_insert)
         ]
         conn.executemany(
@@ -129,7 +141,9 @@ def index_prepared_chunks(
         raise
 
 
-def _batch_upsert_entities(conn, session_id: str, chunk_ids: list, to_insert: list) -> None:
+def _batch_upsert_entities(
+    conn, session_id: str, chunk_ids: list, to_insert: list
+) -> None:
     """
     Upsert all entities for a batch of chunks in three passes:
       a) Collect unique (raw, normalized, canonical, entity_type) across all chunks.
@@ -138,12 +152,12 @@ def _batch_upsert_entities(conn, session_id: str, chunk_ids: list, to_insert: li
       d) executemany insert chunk_entities.
     """
     # a) Collect unique entities and per-chunk entity keys
-    unique_ents: dict[tuple, str] = {}   # (canonical, type) -> raw  (last raw wins)
+    unique_ents: dict[tuple, str] = {}  # (canonical, type) -> raw  (last raw wins)
     chunk_ent_keys: list[list[tuple]] = []  # per chunk: [(canonical, type, count), ...]
 
     for _cid, (_ch, _dom, entities, _bh) in zip(chunk_ids, to_insert):
         key_counts: dict[tuple, int] = {}
-        for ent in (entities or []):
+        for ent in entities or []:
             k = (ent.canonical, ent.entity_type)
             unique_ents[k] = ent.raw
             key_counts[k] = key_counts.get(k, 0) + 1

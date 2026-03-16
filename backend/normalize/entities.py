@@ -1,4 +1,5 @@
 """Entity normalization: abbreviation expansion, regex extraction, FTS query building."""
+
 import re
 from dataclasses import dataclass
 
@@ -104,7 +105,7 @@ def _canonical_iface(raw: str) -> str:
     prefix, suffix = m.group(1), m.group(2)
     expanded = normalize_token(prefix)
     # Normalize suffix: remove spaces around / : .
-    suffix = re.sub(r"\s*([/:.])\\s*", r"\1", suffix.strip())
+    suffix = re.sub(r"\s*([/:.]) *\s*", r"\1", suffix.strip())
     return expanded + suffix
 
 
@@ -118,7 +119,14 @@ def extract_entities(text: str) -> list[Entity]:
         if key not in seen:
             seen.add(key)
             normalized = canonical
-            results.append(Entity(raw=raw, normalized=normalized, canonical=canonical, entity_type=etype))
+            results.append(
+                Entity(
+                    raw=raw,
+                    normalized=normalized,
+                    canonical=canonical,
+                    entity_type=etype,
+                )
+            )
 
     # Interface (covers Eth, Gi, Te, etc.)
     for m in _ALL_IFACE_RE.finditer(text):
@@ -218,7 +226,9 @@ def parse_user_element(user_input: str) -> dict:
     user_input = user_input.strip()
 
     # Interface pattern
-    m = re.match(r"([A-Za-z\-]+)\s*(\d+(?:[/:.]\d+)*(?:\.\d+)?)", user_input, re.IGNORECASE)
+    m = re.match(
+        r"([A-Za-z\-]+)\s*(\d+(?:[/:.]\d+)*(?:\.\d+)?)", user_input, re.IGNORECASE
+    )
     if m:
         prefix, num = m.group(1), m.group(2)
         canonical = _canonical_iface(user_input)
